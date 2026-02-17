@@ -57,6 +57,14 @@ def init_db():
     )
     """)
 
+    for i in range(1, 51):
+        code = f"CF26-A{str(i).zfill(2)}"
+        title = f"Activity {i}"
+        cur.execute(
+            "INSERT OR IGNORE INTO activities (code, title) VALUES (?, ?)",
+            (code, title)
+        )
+        
     conn.commit()
     conn.close()
 
