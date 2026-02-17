@@ -36,7 +36,7 @@
   "></div>
 
   <img
-    src="https://media.tenor.com/2uyENRmiUt0AAAAC/spongebob-done.gif"
+    src="/static/spongebob-squarepants-spongebob.gif"
     alt="Done"
     style="max-width:320px;width:100%;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);"
   />
@@ -60,13 +60,31 @@
 
     (function frame(){
       confetti({
-        particleCount: 6,
-        spread: 70,
+        particleCount: 8,
+        spread: 80,
         startVelocity: 45,
         origin: { x: 0.5, y: 0.35 }
       });
       if (Date.now() < end) requestAnimationFrame(frame);
     })();
+  }
+
+  function showOverlay(count, total){
+    const overlay = document.getElementById("doneOverlay");
+    const progress = document.getElementById("progressText");
+
+    progress.textContent = `${count} / ${total}`;
+    overlay.style.display = "flex";
+    fireConfetti();
+
+    const close = () => {
+      overlay.style.display = "none";
+      overlay.onclick = null;
+      locked = false;
+    };
+
+    overlay.onclick = close;
+    setTimeout(close, 3000);
   }
 
   async function send(code){
@@ -83,20 +101,10 @@
     }
 
     if(data.added){
-      const overlay = document.getElementById("doneOverlay");
-      const progress = document.getElementById("progressText");
-
-      progress.textContent = `${data.count} / ${data.total}`;
-      overlay.style.display = "flex";
-      fireConfetti();
-
-      setTimeout(()=>{
-        overlay.style.display = "none";
-        locked = false;
-      }, 3000);
+      showOverlay(data.count, data.total);
     } else {
       msg.textContent = `Already completed ℹ️ Progress: ${data.count}/${data.total}`;
-      setTimeout(()=>{ locked = false; }, 1000);
+      setTimeout(()=>{ locked = false; }, 900);
     }
   }
 
