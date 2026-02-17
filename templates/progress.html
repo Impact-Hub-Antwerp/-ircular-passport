@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="top">
+    <strong>All stamps</strong>
+    <a class="muted" href="/app">Back</a>
+  </div>
+
+  <div class="pill">Progress: {{ count }} / {{ total }}</div>
+  <div style="height:12px"></div>
+
+  <ul>
+    {% for it in items %}
+      <li><strong>{{ it["code"] }}</strong> — {{ it["title"] }}<br><span class="muted">{{ it["created_at"] }}</span></li>
+    {% else %}
+      <li class="muted">No stamps yet.</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}
