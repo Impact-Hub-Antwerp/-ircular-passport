@@ -6,6 +6,8 @@ from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+from fastapi.staticfiles import StaticFiles
+
 
 APP_NAME = "Digital Circular Passport"
 TOTAL_ACTIVITIES = 50
@@ -15,6 +17,7 @@ DB_PATH = "passport.db"
 SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key")
 
 app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
 templates = Jinja2Templates(directory="templates")
 
