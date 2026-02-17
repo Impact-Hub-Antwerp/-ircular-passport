@@ -14,26 +14,90 @@
   <div id="msg" class="muted"></div>
 </div>
 
+<!-- DONE OVERLAY -->
+<div id="doneOverlay" style="
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.85);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  z-index:9999;
+  text-align:center;
+  color:white;
+  padding:24px;
+">
+  <div id="progressText" style="
+    font-size:52px;
+    font-weight:900;
+    margin-bottom:18px;
+    letter-spacing:1px;
+  "></div>
+
+  <img
+    src="https://media.tenor.com/2uyENRmiUt0AAAAC/spongebob-done.gif"
+    alt="Done"
+    style="max-width:320px;width:100%;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);"
+  />
+
+  <div class="muted" style="margin-top:14px;color:rgba(255,255,255,.75)">
+    Scan the next activity 🎉
+  </div>
+</div>
+
 <script src="https://unpkg.com/html5-qrcode"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
 <script>
   const msg = document.getElementById("msg");
   const qr = new Html5Qrcode("reader");
   let locked = false;
 
+  function fireConfetti(){
+    const duration = 900;
+    const end = Date.now() + duration;
+
+    (function frame(){
+      confetti({
+        particleCount: 6,
+        spread: 70,
+        startVelocity: 45,
+        origin: { x: 0.5, y: 0.35 }
+      });
+      if (Date.now() < end) requestAnimationFrame(frame);
+    })();
+  }
+
   async function send(code){
     const form = new FormData();
     form.append("code", code);
+
     const res = await fetch("/api/scan", { method:"POST", body: form });
     const data = await res.json();
+
     if(!res.ok){
       msg.textContent = data.error || "Error";
       locked = false;
       return;
     }
-    msg.textContent = data.added
-      ? `Saved ✅ Progress: ${data.count}/${data.total}`
-      : `Already completed ℹ️ Progress: ${data.count}/${data.total}`;
-    setTimeout(()=>{ locked = false; }, 1200);
+
+    if(data.added){
+      const overlay = document.getElementById("doneOverlay");
+      const progress = document.getElementById("progressText");
+
+      progress.textContent = `${data.count} / ${data.total}`;
+      overlay.style.display = "flex";
+      fireConfetti();
+
+      setTimeout(()=>{
+        overlay.style.display = "none";
+        locked = false;
+      }, 1500);
+    } else {
+      msg.textContent = `Already completed ℹ️ Progress: ${data.count}/${data.total}`;
+      setTimeout(()=>{ locked = false; }, 1000);
+    }
   }
 
   qr.start(
