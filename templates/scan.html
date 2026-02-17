@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="top">
+    <strong>Scan QR</strong>
+    <a class="muted" href="/app">Back</a>
+  </div>
+
+  <div class="muted">Accepted format: {{ prefix }}A01 … {{ prefix }}A50</div>
+  <div style="height:12px"></div>
+
+  <div id="reader" style="width:100%"></div>
+  <div style="height:12px"></div>
+  <div id="msg" class="muted"></div>
+</div>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+<script>
+  const msg = document.getElementById("msg");
+  const qr = new Html5Qrcode("reader");
+  let locked = false;
+
+  async function send(code){
+    const form = new FormData();
+    form.append("code", code);
+    const res = await fetch("/api/scan", { method:"POST", body: form });
+    const data = await res.json();
+    if(!res.ok){
+      msg.textContent = data.error || "Error";
+      locked = false;
+      return;
+    }
+    msg.textContent = data.added
+      ? `Saved ✅ Progress: ${data.count}/${data.total}`
+      : `Already completed ℹ️ Progress: ${data.count}/${data.total}`;
+    setTimeout(()=>{ locked = false; }, 1200);
+  }
+
+  qr.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: 240 },
+    (decodedText) => {
+      if(locked) return;
+      locked = true;
+      send(decodedText.trim());
+    }
+  ).catch(() => {
+    msg.textContent = "Camera permission is required.";
+  });
+</script>
+{% endblock %}
