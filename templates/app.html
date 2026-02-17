@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="top">
+    <div>
+      <strong>{{ user["name"] }}</strong><br>
+      <span class="muted">{{ user["email"] }}</span>
+    </div>
+  </div>
+
+  <div class="pill">Progress: {{ count }} / {{ total }}</div>
+  <div style="height:12px"></div>
+
+  <div class="row">
+    <a href="/scan"><button type="button">Scan QR</button></a>
+    <a href="/progress"><button type="button">All stamps</button></a>
+  </div>
+</div>
+
+<div class="card">
+  <strong>Latest stamps</strong>
+  <div class="muted">Your last 10 check-ins.</div>
+  <div style="height:10px"></div>
+  <ul>
+    {% for it in items %}
+      <li><strong>{{ it["code"] }}</strong> — {{ it["title"] }}<br><span class="muted">{{ it["created_at"] }}</span></li>
+    {% else %}
+      <li class="muted">No stamps yet. Tap “Scan QR”.</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}
