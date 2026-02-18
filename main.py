@@ -1,22 +1,21 @@
 import os
 import re
-import psycopg2
-import os
 from datetime import datetime
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
 from fastapi import FastAPI, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import PlainTextResponse
-
 
 
 APP_NAME = "Digital Circular Passport"
 TOTAL_ACTIVITIES = 50
 QR_PREFIX = "CF26-"
 
-DB_PATH = "passport.db"
 SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key")
 
 app = FastAPI()
@@ -25,10 +24,10 @@ app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
 templates = Jinja2Templates(directory="templates")
 
 
-# ---------------- DATABASE ----------------
-
 def get_db():
     database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError("DATABASE_URL is not set")
     return psycopg2.connect(database_url)
 
 
@@ -38,7 +37,7 @@ def init_db():
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         email TEXT UNIQUE NOT NULL,
         created_at TEXT NOT NULL
@@ -54,7 +53,7 @@ def init_db():
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS completions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
         activity_code TEXT NOT NULL,
         created_at TEXT NOT NULL,
@@ -62,22 +61,23 @@ def init_db():
     )
     """)
 
-    for i in range(1, 51):
+    for i in range(1, TOTAL_ACTIVITIES + 1):
         code = f"CF26-A{str(i).zfill(2)}"
         title = f"Activity {i}"
         cur.execute(
-            "INSERT OR IGNORE INTO activities (code, title) VALUES (?, ?)",
-            (code, title)
+            "INSERT INTO activities (code, title) VALUES (%s, %s) ON CONFLICT (code) DO NOTHING",
+            (code, title),
         )
-        
+
     conn.commit()
+    cur.close()
     conn.close()
 
 
-init_db()
+@app.on_event("startup")
+def on_startup():
+    init_db()
 
-
-# ---------------- HELPERS ----------------
 
 def current_user(request: Request):
     return request.session.get("user_id")
@@ -92,20 +92,21 @@ def require_login(request: Request):
 
 def get_progress(user_id: int):
     conn = get_db()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    cur.execute("SELECT COUNT(*) as count FROM completions WHERE user_id=?", (user_id,))
+    cur.execute("SELECT COUNT(*) AS count FROM completions WHERE user_id=%s", (user_id,))
     count = cur.fetchone()["count"]
 
     cur.execute("""
         SELECT a.code, a.title, c.created_at
         FROM completions c
         JOIN activities a ON a.code = c.activity_code
-        WHERE c.user_id=?
+        WHERE c.user_id=%s
         ORDER BY c.created_at DESC
     """, (user_id,))
     items = cur.fetchall()
 
+    cur.close()
     conn.close()
     return count, items
 
@@ -116,8 +117,6 @@ def valid_qr(code: str):
     suffix = code[len(QR_PREFIX):]
     return bool(re.match(r"A\d{2}$", suffix))
 
-
-# ---------------- ROUTES ----------------
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
@@ -137,26 +136,28 @@ def register_page(request: Request):
 @app.post("/register")
 def register(request: Request, name: str = Form(...), email: str = Form(...)):
     conn = get_db()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
 
     email = email.strip().lower()
+    name = name.strip()
 
-    cur.execute("SELECT id FROM users WHERE email=?", (email,))
+    cur.execute("SELECT id FROM users WHERE email=%s", (email,))
     row = cur.fetchone()
 
     if row:
         user_id = row["id"]
     else:
         cur.execute(
-            "INSERT INTO users (name, email, created_at) VALUES (?, ?, ?)",
-            (name.strip(), email, datetime.utcnow().isoformat())
+            "INSERT INTO users (name, email, created_at) VALUES (%s, %s, %s) RETURNING id",
+            (name, email, datetime.utcnow().isoformat())
         )
+        user_id = cur.fetchone()["id"]
         conn.commit()
-        user_id = cur.lastrowid
 
+    cur.close()
     conn.close()
-    request.session["user_id"] = user_id
 
+    request.session["user_id"] = user_id
     return RedirectResponse("/app", status_code=303)
 
 
@@ -165,9 +166,10 @@ def app_page(request: Request):
     user_id = require_login(request)
 
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT name, email FROM users WHERE id=?", (user_id,))
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("SELECT name, email FROM users WHERE id=%s", (user_id,))
     user = cur.fetchone()
+    cur.close()
     conn.close()
 
     count, items = get_progress(user_id)
@@ -200,34 +202,29 @@ def scan_api(request: Request, code: str = Form(...)):
         return JSONResponse({"ok": False, "error": "Invalid QR"}, status_code=400)
 
     conn = get_db()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    cur.execute("SELECT code FROM activities WHERE code=?", (code,))
+    cur.execute("SELECT code FROM activities WHERE code=%s", (code,))
     if not cur.fetchone():
+        cur.close()
         conn.close()
         return JSONResponse({"ok": False, "error": "Unknown activity"}, status_code=404)
 
-    try:
-        cur.execute(
-            "INSERT INTO completions (user_id, activity_code, created_at) VALUES (?, ?, ?)",
-            (user_id, code, datetime.utcnow().isoformat())
-        )
-        conn.commit()
-        added = True
-    except sqlite3.IntegrityError:
-        added = False
+    cur.execute(
+        "INSERT INTO completions (user_id, activity_code, created_at) VALUES (%s, %s, %s) "
+        "ON CONFLICT (user_id, activity_code) DO NOTHING RETURNING id",
+        (user_id, code, datetime.utcnow().isoformat())
+    )
+    added = cur.fetchone() is not None
+    conn.commit()
 
-    cur.execute("SELECT COUNT(*) as count FROM completions WHERE user_id=?", (user_id,))
+    cur.execute("SELECT COUNT(*) AS count FROM completions WHERE user_id=%s", (user_id,))
     count = cur.fetchone()["count"]
 
+    cur.close()
     conn.close()
 
-    return {
-        "ok": True,
-        "added": added,
-        "count": count,
-        "total": TOTAL_ACTIVITIES
-    }
+    return {"ok": True, "added": added, "count": count, "total": TOTAL_ACTIVITIES}
 
 
 @app.get("/progress", response_class=HTMLResponse)
@@ -241,25 +238,29 @@ def progress_page(request: Request):
         "total": TOTAL_ACTIVITIES,
         "items": items
     })
+
+
 @app.get("/admin/students", response_class=HTMLResponse)
 def admin_students(request: Request, key: str = ""):
     if key != os.getenv("ADMIN_KEY", ""):
         return PlainTextResponse("Forbidden", status_code=403)
 
     conn = get_db()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    cur.execute("SELECT COUNT(*) as n FROM users")
+    cur.execute("SELECT COUNT(*) AS n FROM users")
     total_users = cur.fetchone()["n"]
 
     cur.execute("""
-        SELECT u.name as name, u.email as email, COUNT(c.id) as cnt
+        SELECT u.name AS name, u.email AS email, COUNT(c.id) AS cnt
         FROM users u
         LEFT JOIN completions c ON c.user_id = u.id
         GROUP BY u.id
         ORDER BY cnt DESC, u.name ASC
     """)
     rows = cur.fetchall()
+
+    cur.close()
     conn.close()
 
     return templates.TemplateResponse("admin_students.html", {
