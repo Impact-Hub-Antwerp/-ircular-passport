@@ -1,6 +1,7 @@
 import os
 import re
-import sqlite3
+import psycopg2
+import os
 from datetime import datetime
 from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -27,9 +28,8 @@ templates = Jinja2Templates(directory="templates")
 # ---------------- DATABASE ----------------
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    database_url = os.getenv("DATABASE_URL")
+    return psycopg2.connect(database_url)
 
 
 def init_db():
