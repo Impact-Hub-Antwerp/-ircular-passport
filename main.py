@@ -269,3 +269,7 @@ def admin_students(request: Request, key: str = ""):
         "total": TOTAL_ACTIVITIES,
         "total_users": total_users
     })
+@app.get("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/register", status_code=303)
