@@ -7,6 +7,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import PlainTextResponse
+
 
 
 APP_NAME = "Digital Circular Passport"
@@ -238,4 +240,31 @@ def progress_page(request: Request):
         "count": count,
         "total": TOTAL_ACTIVITIES,
         "items": items
+    })
+@app.get("/admin/students", response_class=HTMLResponse)
+def admin_students(request: Request, key: str = ""):
+    if key != os.getenv("ADMIN_KEY", ""):
+        return PlainTextResponse("Forbidden", status_code=403)
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) as n FROM users")
+    total_users = cur.fetchone()["n"]
+
+    cur.execute("""
+        SELECT u.name as name, u.email as email, COUNT(c.id) as cnt
+        FROM users u
+        LEFT JOIN completions c ON c.user_id = u.id
+        GROUP BY u.id
+        ORDER BY cnt DESC, u.name ASC
+    """)
+    rows = cur.fetchall()
+    conn.close()
+
+    return templates.TemplateResponse("admin_students.html", {
+        "request": request,
+        "rows": rows,
+        "total": TOTAL_ACTIVITIES,
+        "total_users": total_users
     })
