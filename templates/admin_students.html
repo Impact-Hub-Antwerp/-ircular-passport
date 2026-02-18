@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="top">
+    <strong>Teacher Dashboard</strong>
+    <span class="pill">Auto refresh: <span id="sec">15</span>s</span>
+  </div>
+
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+    <span class="pill">Total registered: <strong>{{ total_users }}</strong></span>
+    <span class="pill">Total activities: <strong>{{ total }}</strong></span>
+  </div>
+
+  <div style="height:12px"></div>
+  <input id="q" placeholder="Search name or email" oninput="filterRows()" />
+</div>
+
+<div class="card">
+  <ul id="list">
+    {% for r in rows %}
+      <li data-text="{{ (r['name'] ~ ' ' ~ r['email'])|lower }}">
+        <strong>{{ r["name"] }}</strong><br>
+        <span class="muted">{{ r["email"] }}</span><br>
+        <span class="pill">{{ r["cnt"] }} / {{ total }}</span>
+      </li>
+    {% else %}
+      <li class="muted">No students yet.</li>
+    {% endfor %}
+  </ul>
+</div>
+
+<script>
+function filterRows(){
+  const q = document.getElementById("q").value.toLowerCase();
+  document.querySelectorAll("#list li").forEach(li=>{
+    li.style.display = li.dataset.text.includes(q) ? "" : "none";
+  });
+}
+
+let s = 15;
+const el = document.getElementById("sec");
+setInterval(()=>{
+  s -= 1;
+  if(s <= 0) location.reload();
+  el.textContent = s;
+}, 1000);
+</script>
+{% endblock %}
