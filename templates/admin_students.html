@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+
 <div class="card">
   <div class="top">
     <strong>Teacher Dashboard</strong>
@@ -15,7 +16,7 @@
   <input id="q" placeholder="Search name or email" oninput="filterRows()" />
 </div>
 
-<div class="card">
+<div class="card" style="margin-top:14px;">
   <ul id="list">
     {% for r in rows %}
       <li data-text="{{ (r['name'] ~ ' ' ~ r['email'])|lower }}">
@@ -30,19 +31,36 @@
 </div>
 
 <script>
-function filterRows(){
-  const q = document.getElementById("q").value.toLowerCase();
-  document.querySelectorAll("#list li").forEach(li=>{
-    li.style.display = li.dataset.text.includes(q) ? "" : "none";
-  });
-}
+  function filterRows() {
+    const q = (document.getElementById("q").value || "").toLowerCase().trim();
+    const items = document.querySelectorAll("#list li[data-text]");
+    items.forEach(li => {
+      const t = li.getAttribute("data-text") || "";
+      li.style.display = t.includes(q) ? "" : "none";
+    });
+  }
 
-let s = 15;
-const el = document.getElementById("sec");
-setInterval(()=>{
-  s -= 1;
-  if(s <= 0) location.reload();
-  el.textContent = s;
-}, 1000);
+  (function startAutoRefresh(){
+    if (window.__autoRefreshStarted) return;
+    window.__autoRefreshStarted = true;
+
+    let remaining = 15;
+    const secEl = document.getElementById("sec");
+    secEl.textContent = String(remaining);
+
+    setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        secEl.textContent = "0";
+      } else {
+        secEl.textContent = String(remaining);
+      }
+    }, 1000);
+
+    setTimeout(() => {
+      window.location.replace(window.location.href);
+    }, 15000);
+  })();
 </script>
+
 {% endblock %}
