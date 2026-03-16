@@ -17,12 +17,28 @@
 </div>
 
 <div class="card" style="margin-top:14px;">
-  <ul id="list">
+  <ul id="list" style="list-style:none; padding:0; margin:0;">
     {% for r in rows %}
-      <li data-text="{{ (r['name'] ~ ' ' ~ r['email'])|lower }}">
+      <li data-text="{{ (r['name'] ~ ' ' ~ r['email'])|lower }}" style="padding:14px 0; border-bottom:1px solid #eaeaea;">
         <strong>{{ r["name"] }}</strong><br>
         <span class="muted">{{ r["email"] }}</span><br>
         <span class="pill">{{ r["cnt"] }} / {{ total }}</span>
+
+        <details style="margin-top:10px;">
+          <summary style="cursor:pointer; font-weight:600;">
+            Completed activities ({{ r["cnt"] }})
+          </summary>
+
+          {% if r["activities"] and r["activities"]|length > 0 %}
+            <ul style="margin:10px 0 0 18px; padding:0;">
+              {% for activity in r["activities"] %}
+                <li style="margin-bottom:4px;">{{ activity }}</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="muted" style="margin-top:8px;">No completed activities yet.</div>
+          {% endif %}
+        </details>
       </li>
     {% else %}
       <li class="muted">No students yet.</li>
