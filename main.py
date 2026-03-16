@@ -180,7 +180,7 @@ def app_page(request: Request):
         "user": user,
         "count": count,
         "total": TOTAL_ACTIVITIES,
-        "items": items[:10]
+        "items": items
     })
 
 
