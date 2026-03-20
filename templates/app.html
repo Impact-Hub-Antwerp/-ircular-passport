@@ -1,10 +1,42 @@
 {% extends "base.html" %}
 {% block content %}
+
+{% if needs_group %}
+<div class="card" style="border:2px solid #d97706; margin-bottom:14px;">
+  <strong>Select your project group</strong>
+  <div class="muted" style="margin-top:6px;">
+    Please choose your group before continuing.
+  </div>
+
+  <div style="height:12px"></div>
+
+  <form method="post" action="/save-group">
+    <select name="group_name" required style="width:100%; padding:12px; border-radius:10px; border:1px solid #ddd;">
+      <option value="">Select your group</option>
+      {% for i in range(1, 56) %}
+        <option value="Group {{ i }}">Group {{ i }}</option>
+      {% endfor %}
+    </select>
+
+    <div style="height:12px"></div>
+    <button type="submit">Save group</button>
+  </form>
+</div>
+{% endif %}
+
 <div class="card">
   <div class="top">
     <div>
       <strong>{{ user["name"] }}</strong><br>
-      <span class="muted">{{ user["email"] }}</span>
+      <span class="muted">{{ user["email"] }}</span><br>
+      <span class="muted">
+        Group:
+        {% if user["group_name"] %}
+          {{ user["group_name"] }}
+        {% else %}
+          Not selected yet
+        {% endif %}
+      </span>
     </div>
   </div>
 
@@ -23,10 +55,14 @@
   <div style="height:10px"></div>
   <ul>
     {% for it in items %}
-      <li><strong>{{ it["code"] }}</strong> — {{ it["title"] }}<br><span class="muted">{{ it["created_at"] }}</span></li>
+      <li>
+        <strong>{{ it["code"] }}</strong> — {{ it["title"] }}<br>
+        <span class="muted">{{ it["created_at"] }}</span>
+      </li>
     {% else %}
       <li class="muted">No stamps yet. Tap “Scan QR”.</li>
     {% endfor %}
   </ul>
 </div>
+
 {% endblock %}
