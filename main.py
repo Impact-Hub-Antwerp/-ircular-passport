@@ -40,9 +40,12 @@ def init_db():
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         email TEXT UNIQUE NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        group_name TEXT
     )
     """)
+
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS group_name TEXT")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS activities (
@@ -103,6 +106,7 @@ def get_progress(user_id: int):
         JOIN activities a ON a.code = c.activity_code
         WHERE c.user_id=%s
         ORDER BY c.created_at DESC
+        LIMIT 10
     """, (user_id,))
     items = cur.fetchall()
 
@@ -167,7 +171,7 @@ def app_page(request: Request):
 
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute("SELECT name, email FROM users WHERE id=%s", (user_id,))
+    cur.execute("SELECT name, email, group_name FROM users WHERE id=%s", (user_id,))
     user = cur.fetchone()
     cur.close()
     conn.close()
@@ -180,8 +184,30 @@ def app_page(request: Request):
         "user": user,
         "count": count,
         "total": TOTAL_ACTIVITIES,
-        "items": items
+        "items": items,
+        "needs_group": not bool(user["group_name"])
     })
+
+
+@app.post("/save-group")
+def save_group(request: Request, group_name: str = Form(...)):
+    user_id = require_login(request)
+
+    allowed_groups = [f"Group {i}" for i in range(1, 56)]
+    if group_name not in allowed_groups:
+        raise HTTPException(status_code=400, detail="Invalid group")
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE users SET group_name=%s WHERE id=%s",
+        (group_name, user_id)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return RedirectResponse("/app", status_code=303)
 
 
 @app.get("/scan", response_class=HTMLResponse)
@@ -230,7 +256,23 @@ def scan_api(request: Request, code: str = Form(...)):
 @app.get("/progress", response_class=HTMLResponse)
 def progress_page(request: Request):
     user_id = require_login(request)
-    count, items = get_progress(user_id)
+
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("""
+        SELECT a.code, a.title, c.created_at
+        FROM completions c
+        JOIN activities a ON a.code = c.activity_code
+        WHERE c.user_id=%s
+        ORDER BY c.created_at DESC
+    """, (user_id,))
+    items = cur.fetchall()
+
+    cur.execute("SELECT COUNT(*) AS count FROM completions WHERE user_id=%s", (user_id,))
+    count = cur.fetchone()["count"]
+
+    cur.close()
+    conn.close()
 
     return templates.TemplateResponse("progress.html", {
         "request": request,
@@ -241,7 +283,7 @@ def progress_page(request: Request):
 
 
 @app.get("/admin/students", response_class=HTMLResponse)
-def admin_students(request: Request, key: str = ""):
+def admin_students(request: Request, key: str = "", group_name: str = ""):
     if key != os.getenv("ADMIN_KEY", ""):
         return PlainTextResponse("Forbidden", status_code=403)
 
@@ -251,25 +293,50 @@ def admin_students(request: Request, key: str = ""):
     cur.execute("SELECT COUNT(*) AS n FROM users")
     total_users = cur.fetchone()["n"]
 
-    cur.execute("""
-        SELECT
-            u.id,
-            u.name,
-            u.email,
-            COUNT(c.id) AS cnt,
-            COALESCE(
-                ARRAY_AGG(
-                    a.title || ' [' || a.code || ']'
-                    ORDER BY c.created_at DESC
-                ) FILTER (WHERE c.id IS NOT NULL),
-                ARRAY[]::TEXT[]
-            ) AS activities
-        FROM users u
-        LEFT JOIN completions c ON c.user_id = u.id
-        LEFT JOIN activities a ON a.code = c.activity_code
-        GROUP BY u.id, u.name, u.email
-        ORDER BY COUNT(c.id) DESC, u.name ASC
-    """)
+    if group_name:
+        cur.execute("""
+            SELECT
+                u.id,
+                u.name,
+                u.email,
+                u.group_name,
+                COUNT(c.id) AS cnt,
+                COALESCE(
+                    ARRAY_AGG(
+                        a.title || ' [' || a.code || ']'
+                        ORDER BY c.created_at DESC
+                    ) FILTER (WHERE c.id IS NOT NULL),
+                    ARRAY[]::TEXT[]
+                ) AS activities
+            FROM users u
+            LEFT JOIN completions c ON c.user_id = u.id
+            LEFT JOIN activities a ON a.code = c.activity_code
+            WHERE u.group_name = %s
+            GROUP BY u.id, u.name, u.email, u.group_name
+            ORDER BY u.name ASC
+        """, (group_name,))
+    else:
+        cur.execute("""
+            SELECT
+                u.id,
+                u.name,
+                u.email,
+                u.group_name,
+                COUNT(c.id) AS cnt,
+                COALESCE(
+                    ARRAY_AGG(
+                        a.title || ' [' || a.code || ']'
+                        ORDER BY c.created_at DESC
+                    ) FILTER (WHERE c.id IS NOT NULL),
+                    ARRAY[]::TEXT[]
+                ) AS activities
+            FROM users u
+            LEFT JOIN completions c ON c.user_id = u.id
+            LEFT JOIN activities a ON a.code = c.activity_code
+            GROUP BY u.id, u.name, u.email, u.group_name
+            ORDER BY u.group_name NULLS LAST, u.name ASC
+        """)
+
     rows = cur.fetchall()
 
     cur.close()
@@ -279,9 +346,12 @@ def admin_students(request: Request, key: str = ""):
         "request": request,
         "rows": rows,
         "total": TOTAL_ACTIVITIES,
-        "total_users": total_users
+        "total_users": total_users,
+        "selected_group": group_name,
+        "admin_key": key
     })
-    
+
+
 @app.get("/logout")
 def logout(request: Request):
     request.session.clear()
